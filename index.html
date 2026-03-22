@@ -1938,6 +1938,11 @@ function viewDonor(id){
     }).join("")+
     '</tbody></table></div>':
     '<div class="empty"><div class="empty-ic">💸</div><div class="empty-msg">No donations recorded yet</div></div>');
+  // append export button
+  var eb = document.createElement('div');
+  eb.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid var(--bor);display:flex;gap:8px;justify-content:flex-end';
+  eb.innerHTML='<button class="btn btn-primary btn-sm" onclick="exportDonorPDF(\''+id+'\')">⬇ Export PDF</button>';
+  document.getElementById("view-body").appendChild(eb);
   openMod("mod-view");
 }
 function ib(l,v){return'<div><div style="font-size:10px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">'+l+'</div><div style="font-size:13px;font-weight:600;color:var(--text)">'+esc(v||"—")+'</div></div>';}
@@ -2203,6 +2208,11 @@ function viewProj(id){
     }).join("")+
     '</tbody></table></div>':
     '<div class="empty"><div class="empty-ic">📋</div><div class="empty-msg">No linked transactions</div></div>');
+  // append export button
+  var ep = document.createElement('div');
+  ep.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid var(--bor);display:flex;gap:8px;justify-content:flex-end';
+  ep.innerHTML='<button class="btn btn-primary btn-sm" onclick="exportProjPDF(\''+id+'\')">⬇ Export PDF</button>';
+  document.getElementById("view-body").appendChild(ep);
   openMod("mod-view");
 }
 
@@ -3950,6 +3960,340 @@ function pdfLed(){
     doc.save("Ledger_"+acct.name.replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");toast("PDF saved","ok");
   });
 }
+
+// =============================================================
+//  DONOR TRANSACTION REPORT PDF
+// =============================================================
+function exportDonorPDF(id){
+  var d=DONORS.find(function(x){return x.id===id;});
+  if(!d){toast("Donor not found","er");return;}
+  var txns=TXN.filter(function(t){return t.donorId===id;}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  loadPDF(function(jsPDF){
+    var doc=new jsPDF();
+    var PW=210,M=14;
+
+    /* ── BRANDED HEADER ── */
+    // Deep navy bar
+    doc.setFillColor(10,14,35);doc.rect(0,0,PW,32,"F");
+    // Accent bar bottom of header
+    doc.setFillColor(22,163,74);doc.rect(0,30,PW,2.5,"F");
+    // Logo with rounded white background circle
+    doc.setFillColor(255,255,255);doc.roundedRect(2.5,2,26,26,3,3,"F");
+    try{doc.addImage(LOGO_B64,"JPEG",4,3.5,23,23);}catch(e){}
+    // Org name
+    doc.setFontSize(13);doc.setFont("helvetica","bold");doc.setTextColor(240,244,255);
+    doc.text("98' Social Charity Ulapane",32,12);
+    doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(120,135,175);
+    doc.text("Since 2022 \xB7 Charity Management ERP",32,18.5);
+    // Report title + date right
+    doc.setFontSize(13);doc.setFont("helvetica","bold");doc.setTextColor(74,222,128);
+    doc.text("Donor Transaction Report",PW-M,12,{align:"right"});
+    doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(120,135,175);
+    doc.text(new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),PW-M,18.5,{align:"right"});
+
+    var y=40;
+
+    /* ── DONOR PROFILE CARD ── */
+    // Card bg
+    doc.setFillColor(248,250,255);doc.roundedRect(M,y,182,32,3,3,"F");
+    doc.setDrawColor(210,220,240);doc.setLineWidth(0.35);doc.roundedRect(M,y,182,32,3,3,"S");
+    // Left accent bar
+    doc.setFillColor(37,99,235);doc.roundedRect(M,y,3,32,1.5,1.5,"F");
+    // Avatar circle with initials
+    var av_x=23,av_y=y+8,av_r=8;
+    doc.setFillColor(37,99,235);doc.circle(av_x,av_y+4,av_r,"F");
+    doc.setFontSize(9);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+    var ini=(d.name||"?").split(" ").map(function(w){return w[0];}).join("").slice(0,2).toUpperCase();
+    doc.text(ini,av_x,av_y+7,{align:"center"});
+    // Donor name & meta
+    doc.setFontSize(14);doc.setFont("helvetica","bold");doc.setTextColor(15,25,70);
+    doc.text(d.name,36,y+10);
+    doc.setFontSize(8.5);doc.setFont("helvetica","normal");doc.setTextColor(100,110,145);
+    var meta2=[(d.type||"Individual")];
+    if(d.org)meta2.push(d.org);
+    doc.text(meta2.join(" \xB7 "),36,y+17);
+    // Contact chips
+    var cx=36,cy=y+24.5;
+    var chips=[];
+    if(d.phone)chips.push("Ph: "+d.phone);
+    if(d.email)chips.push(d.email);
+    if(d.loc)chips.push(d.loc);
+    if(chips.length){
+      doc.setFontSize(7.5);doc.setTextColor(80,95,135);
+      doc.text(chips.join("   "),cx,cy);
+    }
+    // Total donated badge (right side)
+    doc.setFillColor(22,163,74);doc.roundedRect(152,y+6,38,19,2.5,2.5,"F");
+    doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+    doc.text("TOTAL DONATED",171,y+13,{align:"center"});
+    doc.setFontSize(10);doc.text(fmt(d.total||0),171,y+21,{align:"center"});
+    y+=40;
+
+    /* ── TRANSACTION COUNT STRIP ── */
+    doc.setFillColor(240,245,255);doc.roundedRect(M,y,182,11,2,2,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(37,99,235);
+    doc.text("Transaction History",M+5,y+7.5);
+    doc.setFont("helvetica","normal");doc.setTextColor(100,110,145);
+    doc.text(txns.length+" record(s) \xB7 Sorted by date (earliest first)",M+48,y+7.5);
+    y+=18;
+
+    /* ── TABLE ── */
+    // Header row
+    doc.setFillColor(15,20,50);doc.roundedRect(M,y,182,9,1.5,1.5,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(200,210,240);
+    var cols={vno:M+3,date:M+36,desc:M+68,cat:M+128,amt:M+179};
+    doc.text("VOUCHER",cols.vno,y+6);
+    doc.text("DATE",cols.date,y+6);
+    doc.text("DESCRIPTION",cols.desc,y+6);
+    doc.text("CATEGORY",cols.cat,y+6);
+    doc.text("AMOUNT",cols.amt,y+6,{align:"right"});
+    doc.setTextColor(0,0,0);y+=12;
+
+    if(!txns.length){
+      doc.setFontSize(9.5);doc.setFont("helvetica","italic");doc.setTextColor(160,165,185);
+      doc.text("No transactions recorded for this donor.",M+5,y+6);y+=14;
+    } else {
+      txns.forEach(function(t,i){
+        if(y>272){
+          doc.addPage();
+          // mini header on new page
+          doc.setFillColor(15,20,50);doc.roundedRect(M,14,182,9,1.5,1.5,"F");
+          doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(200,210,240);
+          doc.text("VOUCHER",cols.vno,20);doc.text("DATE",cols.date,20);
+          doc.text("DESCRIPTION",cols.desc,20);doc.text("CATEGORY",cols.cat,20);
+          doc.text("AMOUNT",cols.amt,20,{align:"right"});
+          doc.setTextColor(0,0,0);y=28;
+        }
+        var rowH=9;
+        // Alt row bg
+        if(i%2===1){doc.setFillColor(247,249,255);doc.rect(M,y-1,182,rowH,"F");}
+        // Left border accent on row
+        doc.setFillColor(22,163,74);doc.rect(M,y-1,1.5,rowH,"F");
+        // Voucher
+        doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(37,99,235);
+        doc.text(t.vno||"—",cols.vno+2,y+5.5);
+        // Date
+        doc.setFont("helvetica","normal");doc.setTextColor(90,100,130);
+        doc.text(fmtDS(t.date),cols.date,y+5.5);
+        // Description
+        doc.setFont("helvetica","bold");doc.setTextColor(15,25,60);
+        var desc=(t.desc||"").length>30?(t.desc||"").slice(0,29)+"\u2026":(t.desc||"\u2014");
+        doc.text(desc,cols.desc,y+5.5);
+        // Category
+        doc.setFont("helvetica","normal");doc.setTextColor(90,105,140);
+        var cat=(t.category||"").length>18?(t.category||"").slice(0,17)+"\u2026":(t.category||"\u2014");
+        doc.text(cat,cols.cat,y+5.5);
+        // Amount
+        doc.setFont("helvetica","bold");doc.setTextColor(22,163,74);
+        doc.text(fmt(t.amount),cols.amt,y+5.5,{align:"right"});
+        // Thin separator line
+        doc.setDrawColor(225,230,245);doc.setLineWidth(0.25);
+        doc.line(M,y+rowH-1,M+182,y+rowH-1);
+        doc.setTextColor(0,0,0);y+=rowH;
+      });
+    }
+
+    /* ── TOTAL ROW ── */
+    y+=3;
+    doc.setFillColor(15,20,50);doc.roundedRect(M,y,182,13,2,2,"F");
+    // Green right portion
+    doc.setFillColor(22,163,74);doc.roundedRect(M+130,y,52,13,2,2,"F");
+    doc.setFontSize(9.5);doc.setFont("helvetica","bold");doc.setTextColor(200,215,255);
+    doc.text("TOTAL DONATED",M+6,y+9);
+    doc.setTextColor(255,255,255);doc.setFontSize(10.5);
+    doc.text(fmt(d.total||0),M+179,y+9,{align:"right"});
+
+    /* ── FOOTER ── */
+    doc.setFillColor(240,244,252);doc.rect(0,283,PW,14,"F");
+    doc.setDrawColor(210,220,240);doc.setLineWidth(0.3);doc.line(0,283,PW,283);
+    doc.setFontSize(7);doc.setFont("helvetica","normal");doc.setTextColor(120,130,160);
+    doc.text("98' Social Charity Ulapane ERP \xB7 Confidential Donor Report",M,290);
+    doc.text("Generated: "+new Date().toLocaleDateString("en-GB"),PW-M,290,{align:"right"});
+
+    doc.save("Donor_"+d.name.replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
+    toast("Donor PDF saved","ok");
+  });
+}
+
+// =============================================================
+//  PROJECT TRANSACTION REPORT PDF
+// =============================================================
+function exportProjPDF(id){
+  var p=PROJS.find(function(x){return x.id===id;});
+  if(!p){toast("Project not found","er");return;}
+  var txns=TXN.filter(function(t){return t.projId===id;}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  var income=txns.filter(function(t){return t.type==="income";}).reduce(function(s,t){return s+t.amount;},0);
+  var expense=txns.filter(function(t){return t.type==="expense";}).reduce(function(s,t){return s+t.amount;},0);
+  var net=income-expense;
+  var pct=Math.min(100,Math.round((p.spent||0)/Math.max(p.budget||1,1)*100));
+  loadPDF(function(jsPDF){
+    var doc=new jsPDF();
+    var PW=210,M=14;
+
+    /* ── BRANDED HEADER ── */
+    doc.setFillColor(10,14,35);doc.rect(0,0,PW,32,"F");
+    doc.setFillColor(22,163,74);doc.rect(0,30,PW,2.5,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(2.5,2,26,26,3,3,"F");
+    try{doc.addImage(LOGO_B64,"JPEG",4,3.5,23,23);}catch(e){}
+    doc.setFontSize(13);doc.setFont("helvetica","bold");doc.setTextColor(240,244,255);
+    doc.text("98' Social Charity Ulapane",32,12);
+    doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(120,135,175);
+    doc.text("Since 2022 \xB7 Charity Management ERP",32,18.5);
+    doc.setFontSize(13);doc.setFont("helvetica","bold");doc.setTextColor(74,222,128);
+    doc.text("Project Transaction Report",PW-M,12,{align:"right"});
+    doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(120,135,175);
+    doc.text(new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),PW-M,18.5,{align:"right"});
+
+    var y=40;
+
+    /* ── PROJECT TITLE CARD ── */
+    var stColors={Active:[22,163,74],Planning:[139,92,246],Paused:[245,158,11],Completed:[59,130,246],Cancelled:[239,68,68]};
+    var sc2=stColors[p.status||"Planning"]||[100,110,130];
+    doc.setFillColor(248,250,255);doc.roundedRect(M,y,182,38,3,3,"F");
+    doc.setDrawColor(210,220,240);doc.setLineWidth(0.35);doc.roundedRect(M,y,182,38,3,3,"S");
+    // Colored left accent = project status color
+    doc.setFillColor(sc2[0],sc2[1],sc2[2]);doc.roundedRect(M,y,3.5,38,1.5,1.5,"F");
+    // Project name
+    doc.setFontSize(14);doc.setFont("helvetica","bold");doc.setTextColor(10,20,60);
+    doc.text(p.name,M+8,y+10);
+    // Status pill
+    doc.setFillColor(sc2[0],sc2[1],sc2[2]);doc.roundedRect(M+8,y+13,22,6.5,2,2,"F");
+    doc.setFontSize(6.5);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+    doc.text((p.status||"Planning").toUpperCase(),M+19,y+18,{align:"center"});
+    // Category + manager
+    doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(100,115,150);
+    var pmeta=[];
+    if(p.category)pmeta.push(p.category);
+    if(p.mgr)pmeta.push("Manager: "+p.mgr);
+    if(p.start&&p.end)pmeta.push(fmtD(p.start)+" \u2013 "+fmtD(p.end));
+    if(pmeta.length)doc.text(pmeta.join("   \xB7   "),M+8,y+27);
+    // Desc
+    if(p.desc){
+      doc.setFontSize(7.5);doc.setFont("helvetica","italic");doc.setTextColor(130,140,165);
+      var desc2=p.desc.length>90?p.desc.slice(0,89)+"\u2026":p.desc;
+      doc.text(desc2,M+8,y+34);
+    }
+    y+=46;
+
+    /* ── KPI ROW (4 boxes) ── */
+    var kw=43,kg=2;
+    var kpis=[
+      {l:"BUDGET",v:fmt(p.budget||0),c:[37,99,235]},
+      {l:"RAISED",v:fmt(p.raised||0),c:[22,163,74]},
+      {l:"SPENT",v:fmt(p.spent||0),c:[220,38,38]},
+      {l:"BALANCE",v:fmt((p.budget||0)-(p.spent||0)),c:[(p.budget||0)-(p.spent||0)>=0?22:220,(p.budget||0)-(p.spent||0)>=0?163:38,(p.budget||0)-(p.spent||0)>=0?74:38]}
+    ];
+    kpis.forEach(function(k,i){
+      var kx=M+i*(kw+kg);
+      doc.setFillColor(248,250,255);doc.roundedRect(kx,y,kw,16,2,2,"F");
+      doc.setDrawColor(k.c[0],k.c[1],k.c[2]);doc.setLineWidth(0.5);doc.roundedRect(kx,y,kw,16,2,2,"S");
+      doc.setFontSize(6.5);doc.setFont("helvetica","bold");doc.setTextColor(120,130,160);
+      doc.text(k.l,kx+kw/2,y+5,{align:"center"});
+      doc.setFontSize(9);doc.setFont("helvetica","bold");doc.setTextColor(k.c[0],k.c[1],k.c[2]);
+      doc.text(k.v,kx+kw/2,y+12.5,{align:"center"});
+    });
+    y+=22;
+
+    /* ── PROGRESS BAR ── */
+    doc.setFillColor(225,230,245);doc.roundedRect(M,y,182,5,2.5,2.5,"F");
+    var bcolor=pct>90?[239,68,68]:pct>70?[245,158,11]:[22,163,74];
+    var bw=Math.max(2,Math.round(182*pct/100));
+    doc.setFillColor(bcolor[0],bcolor[1],bcolor[2]);doc.roundedRect(M,y,bw,5,2.5,2.5,"F");
+    doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(80,95,130);
+    doc.text("Budget Utilization",M,y-2);
+    doc.setTextColor(bcolor[0],bcolor[1],bcolor[2]);
+    doc.text(pct+"%",M+182,y-2,{align:"right"});
+    y+=14;
+
+    /* ── INCOME / EXPENSE SUMMARY ── */
+    doc.setFillColor(240,253,245);doc.roundedRect(M,y,88,14,2,2,"F");
+    doc.setDrawColor(22,163,74);doc.setLineWidth(0.4);doc.roundedRect(M,y,88,14,2,2,"S");
+    doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(21,128,61);
+    doc.text("TOTAL INCOME",M+5,y+5.5);
+    doc.setFontSize(10);doc.text(fmt(income),M+5,y+11.5);
+
+    doc.setFillColor(255,241,242);doc.roundedRect(M+96,y,88,14,2,2,"F");
+    doc.setDrawColor(220,38,38);doc.setLineWidth(0.4);doc.roundedRect(M+96,y,88,14,2,2,"S");
+    doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(185,28,28);
+    doc.text("TOTAL EXPENSE",M+101,y+5.5);
+    doc.setFontSize(10);doc.text(fmt(expense),M+101,y+11.5);
+    y+=22;
+
+    /* ── TABLE ── */
+    doc.setFillColor(15,20,50);doc.roundedRect(M,y,182,9,1.5,1.5,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(200,210,240);
+    var cols={vno:M+3,date:M+36,desc:M+68,type:M+143,amt:M+179};
+    doc.text("VOUCHER",cols.vno,y+6);
+    doc.text("DATE",cols.date,y+6);
+    doc.text("DESCRIPTION",cols.desc,y+6);
+    doc.text("TYPE",cols.type,y+6);
+    doc.text("AMOUNT",cols.amt,y+6,{align:"right"});
+    doc.setTextColor(0,0,0);y+=12;
+
+    if(!txns.length){
+      doc.setFontSize(9.5);doc.setFont("helvetica","italic");doc.setTextColor(160,165,185);
+      doc.text("No transactions linked to this project.",M+5,y+6);y+=14;
+    } else {
+      var tColors={income:[22,163,74],expense:[220,38,38],transfer:[37,99,235]};
+      txns.forEach(function(t,i){
+        if(y>272){
+          doc.addPage();
+          doc.setFillColor(15,20,50);doc.roundedRect(M,14,182,9,1.5,1.5,"F");
+          doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(200,210,240);
+          doc.text("VOUCHER",cols.vno,20);doc.text("DATE",cols.date,20);
+          doc.text("DESCRIPTION",cols.desc,20);doc.text("TYPE",cols.type,20);
+          doc.text("AMOUNT",cols.amt,20,{align:"right"});
+          doc.setTextColor(0,0,0);y=28;
+        }
+        var rowH=9;
+        var tc2=tColors[t.type]||[80,90,110];
+        if(i%2===1){doc.setFillColor(247,249,255);doc.rect(M,y-1,182,rowH,"F");}
+        // Side accent color = transaction type
+        doc.setFillColor(tc2[0],tc2[1],tc2[2]);doc.rect(M,y-1,1.5,rowH,"F");
+        doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(37,99,235);
+        doc.text(t.vno||"—",cols.vno+2,y+5.5);
+        doc.setFont("helvetica","normal");doc.setTextColor(90,100,130);
+        doc.text(fmtDS(t.date),cols.date,y+5.5);
+        doc.setFont("helvetica","bold");doc.setTextColor(15,25,60);
+        var dsc=(t.desc||"").length>32?(t.desc||"").slice(0,31)+"\u2026":(t.desc||"\u2014");
+        doc.text(dsc,cols.desc,y+5.5);
+        // Type badge
+        doc.setFillColor(tc2[0],tc2[1],tc2[2],0.15);
+        doc.setFillColor(Math.min(255,tc2[0]+180),Math.min(255,tc2[1]+190),Math.min(255,tc2[2]+180));
+        doc.roundedRect(cols.type-1,y+0.5,20,6,1.5,1.5,"F");
+        doc.setFontSize(6.5);doc.setFont("helvetica","bold");doc.setTextColor(tc2[0],tc2[1],tc2[2]);
+        doc.text(t.type.charAt(0).toUpperCase()+t.type.slice(1),cols.type+9,y+5.5,{align:"center"});
+        // Amount
+        doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(tc2[0],tc2[1],tc2[2]);
+        doc.text(fmt(t.amount),cols.amt,y+5.5,{align:"right"});
+        doc.setDrawColor(225,230,245);doc.setLineWidth(0.25);
+        doc.line(M,y+rowH-1,M+182,y+rowH-1);
+        doc.setTextColor(0,0,0);y+=rowH;
+      });
+    }
+
+    /* ── NET BALANCE ROW ── */
+    y+=3;
+    var nc=net>=0?[22,163,74]:[220,38,38];
+    doc.setFillColor(15,20,50);doc.roundedRect(M,y,182,13,2,2,"F");
+    doc.setFillColor(nc[0],nc[1],nc[2]);doc.roundedRect(M+118,y,64,13,2,2,"F");
+    doc.setFontSize(9.5);doc.setFont("helvetica","bold");doc.setTextColor(200,215,255);
+    doc.text("NET BALANCE",M+6,y+9);
+    doc.setTextColor(255,255,255);doc.setFontSize(10.5);
+    doc.text(fmt(net),M+179,y+9,{align:"right"});
+
+    /* ── FOOTER ── */
+    doc.setFillColor(240,244,252);doc.rect(0,283,PW,14,"F");
+    doc.setDrawColor(210,220,240);doc.setLineWidth(0.3);doc.line(0,283,PW,283);
+    doc.setFontSize(7);doc.setFont("helvetica","normal");doc.setTextColor(120,130,160);
+    doc.text("98' Social Charity Ulapane ERP \xB7 Confidential Project Report",M,290);
+    doc.text("Generated: "+new Date().toLocaleDateString("en-GB"),PW-M,290,{align:"right"});
+
+    doc.save("Project_"+p.name.replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
+    toast("Project PDF saved","ok");
+  });
+}
+
 function exportTxnPDF(){
   loadPDF(function(jsPDF){
     var doc=new jsPDF("landscape");
